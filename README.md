@@ -126,6 +126,33 @@ go run main.go store.go scheduler.go queue.go election.go scheduler-2
 
 `scheduler-2` will sit as a follower. Kill `scheduler-1` with `Ctrl+C` and watch `scheduler-2` take over leadership automatically within a few seconds.
 
+## Load testing
+
+A standalone load testing tool lives in `loadtest/` — it inserts a batch of tagged test jobs, polls the database until they all complete, and reports throughput. It runs as a separate Go module so it stays decoupled from the core scheduler.
+
+### Running it
+
+Terminal 1 — start the scheduler as usual:
+```bash
+go run main.go store.go scheduler.go queue.go election.go scheduler-1
+```
+
+Terminal 2 — from the `loadtest/` folder:
+```bash
+go run loadtest_runner.go 200
+```
+
+The number (`200`) is how many test jobs to create. Jobs are split evenly across all three queue shards (`short`, `long`, `default`).
+
+### Results
+
+| Condition | Throughput | Notes |
+|---|---|---|
+| Full speed (no simulated failures) | ~1,700 jobs/minute | 200/200 jobs completed in 7 seconds |
+| Under 33% simulated failure rate | ~38 jobs/minute | 193/200 succeeded via retry; remaining 7 correctly exhausted retries and were routed to the dead letter queue — zero jobs were lost or silently dropped |
+
+The failure-condition test is the more meaningful number — it demonstrates that under sustained partial failure, the system keeps making forward progress and every job reaches a terminal, accounted-for state (success or dead letter) rather than disappearing or retrying forever.
+
 ## What's next
 
 Continuing through the remaining phases — consistent hashing for dynamic worker scaling, rate limiting per job type, backpressure handling, Prometheus metrics, and eventually a REST API with Kubernetes deployment. Progress is tracked above and updated as each phase completes.
